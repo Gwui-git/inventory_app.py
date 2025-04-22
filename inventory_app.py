@@ -1,103 +1,95 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import os
 
-# --- Reuse ALL your existing functions ---
+# --- Function Definitions ---
+
 def parse_batch(batch):
-    # (Keep your exact implementation)
-    pass
-
-def is_file_open(file_path):
-    # (Keep your exact implementation)
-    pass
-
-def process_files(endcaps_df, open_space_df, selected_types, move_into_types):
-    # (Keep your ENTIRE existing processing logic)
-    # Only change: Replace `messagebox` with `st.error()`/`st.success()`
-    return final_output, summary_output, updated_open_space_df
+    if isinstance(batch, str) and len(batch) >= 10:
+        batch_prefix = batch[:2]
+        try:
+            year = int("20" + batch[-2:])
+            week = int(batch[-4:-2])
+            batch_date = datetime.strptime(f"{year}-W{week}-1", "%Y-W%W-%w")
+            return batch_prefix, batch_date
+        except ValueError:
+            return batch_prefix, pd.NaT
+    return None, pd.NaT
 
 # --- Streamlit UI ---
-st.set_page_config(layout="wide")
-st.title("📊 Advanced Inventory Consolidation")
 
-# File Upload (with validation)
-st.header("1. Upload Files")
-col1, col2 = st.columns(2)
-with col1:
-    endcaps_file = st.file_uploader("Endcaps File", type=["xlsx"], key="endcaps")
-with col2:
-    open_space_file = st.file_uploader("Open Space File", type=["xlsx"], key="openspace")
+st.title("Endcaps and Open Space Processor")
 
-# Storage Type Selection (multi-column layout)
-st.header("2. Select Storage Types")
-storage_types = ["901", "902", "910", "916", "920", "921", "922", "980", "998", "999",
-                "DT1", "LT1", "LT2", "LT4", "LT5", "OE1", "OVG", "OVL", "OVP", "OVT",
-                "PC1", "PC2", "PC4", "PC5", "PSA", "QAH", "RET", "TB1", "TB2", "TB4",
-                "TR1", "TR2", "VIR", "VTL"]
+st.header("Step 1: Upload Files")
+endcaps_file = st.file_uploader("Upload Endcaps Excel File", type=["xlsx"])
+open_space_file = st.file_uploader("Upload Open Space Excel File", type=["xlsx"])
 
-cols = st.columns(4)
-storage_vars = {}
-for i, stype in enumerate(storage_types):
-    with cols[i % 4]:
-        storage_vars[stype] = st.checkbox(stype, value=True, key=f"filter_{stype}")
-
-# Move-Into Types (separate section)
-st.header("3. Select Storage Types to Move Into")
-move_into_cols = st.columns(4)
-move_into_vars = {}
-for i, stype in enumerate(storage_types):
-    with move_into_cols[i % 4]:
-        move_into_vars[stype] = st.checkbox(stype, value=True, key=f"moveinto_{stype}")
-
-# Debug Mode
-debug_mode = st.checkbox("Enable Debug Logging")
-
-# Process Button
-if st.button("🚀 Process Files", type="primary"):
-    if not endcaps_file or not open_space_file:
-        st.error("Please upload both files!")
+if endcaps_file and open_space_file:
+    try:
+        endcaps_df = pd.read_excel(endcaps_file, sheet_name="Sheet1")
+        open_space_df = pd.read_excel(open_space_file, sheet_name="Sheet1")
+    except Exception as e:
+        st.error(f"Failed to read Excel files: {e}")
     else:
-        with st.spinner("Processing..."):
-            try:
-                # Get selected types
-                selected_types = [stype for stype, val in storage_vars.items() if val]
-                move_into_types = [stype for stype, val in move_into_vars.items() if val]
+        # Storage Types (You may dynamically get this from file if needed)
+        all_storage_types = sorted(endcaps_df["Storage Type"].dropna().unique())
+        all_move_into_types = sorted(open_space_df["Storage Type"].dropna().unique())
 
-                # Read files
-                endcaps_df = pd.read_excel(endcaps_file)
-                open_space_df = pd.read_excel(open_space_file)
+        st.header("Step 2: Filter Options")
 
-                # Process (your existing logic)
-                final, summary, updated = process_files(
-                    endcaps_df, open_space_df, 
-                    selected_types, move_into_types
-                )
+        selected_types = st.multiselect(
+            "Select Storage Types to FILTER in Endcaps",
+            options=all_storage_types,
+            default=all_storage_types
+        )
 
-                # Show debug log if enabled
-                if debug_mode:
-                    with open("debug_log.txt") as f:
-                        st.text_area("Debug Log", f.read(), height=200)
+        move_into_types = st.multiselect(
+            "Select Storage Types to MOVE INTO in Open Spaces",
+            options=all_move_into_types,
+            default=all_move_into_types
+        )
 
-                # Download buttons
-                st.success("Processing complete!")
-                st.download_button(
-                    "📥 Final Assignments",
-                    final.to_csv(index=False),
-                    "final_assignments.csv"
-                )
-                st.download_button(
-                    "📥 Summary Report",
-                    summary.to_csv(index=False),
-                    "summary_assignments.csv"
-                )
-                st.download_button(
-                    "📥 Updated Open Space",
-                    updated.to_csv(index=False),
-                    "updated_open_space.csv"
-                )
+        if st.button("Process Files"):
+            with st.spinner("Processing..."):
+                try:
+                    # Step 1: Filter VIR
+                    open_space_df = open_space_df[open_space_df["Storage Type"] != "VIR"].copy()
 
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
-                if debug_mode:
-                    st.exception(e)
+                    # Step 2: Filter Endcaps
+                    endcaps_df = endcaps_df[endcaps_df["Storage Type"].isin(selected_types)].copy()
+
+                    # Step 3: SU Count per Bin
+                    endcaps_df["Storage Unit"] = endcaps_df["Storage Unit"].astype(str).str.strip()
+                    endcaps_df["Storage Bin"] = endcaps_df["Storage Bin"].astype(str).str.strip()
+                    su_count = endcaps_df.groupby("Storage Bin")["Storage Unit"].nunique().reset_index()
+                    su_count.columns = ["Storage Bin", "Total Unique SU Count"]
+                    endcaps_df = endcaps_df.merge(su_count, on="Storage Bin", how="left")
+                    endcaps_df.sort_values("Total Unique SU Count", inplace=True)
+
+                    # Step 4: Sort Open Space by SU Count
+                    open_space_df.sort_values("SU Count", ascending=False, inplace=True)
+
+                    # Step 5: Clean and parse batches
+                    endcaps_df["Material"] = endcaps_df["Material"].astype(str).str.strip()
+                    open_space_df["Material Number"] = open_space_df["Material Number"].astype(str).str.strip()
+                    endcaps_df["Batch"] = endcaps_df["Batch"].astype(str).str.strip()
+                    open_space_df["Batch Number"] = open_space_df["Batch Number"].astype(str).str.strip()
+
+                    endcaps_df[["Batch Prefix", "Batch Date"]] = endcaps_df["Batch"].apply(lambda x: pd.Series(parse_batch(x)))
+                    open_space_df[["Batch Prefix", "Batch Date"]] = open_space_df["Batch Number"].apply(lambda x: pd.Series(parse_batch(x)))
+
+                    endcaps_df["Batch Date"] = pd.to_datetime(endcaps_df["Batch Date"], errors='coerce')
+                    open_space_df["Batch Date"] = pd.to_datetime(open_space_df["Batch Date"], errors='coerce')
+
+                    # Step 6: Filter open bins
+                    available_bins = open_space_df[
+                        (open_space_df["Storage Type"].isin(move_into_types)) &
+                        (open_space_df["Utilization %"] < 100)
+                    ].copy()
+
+                    st.success("Files processed successfully! Next steps (like assigning bins) would be implemented here.")
+                    st.dataframe(endcaps_df.head(10))
+                    st.dataframe(open_space_df.head(10))
+
+                except Exception as e:
+                    st.error(f"An error occurred during processing: {e}")
