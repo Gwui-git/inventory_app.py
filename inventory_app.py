@@ -103,8 +103,9 @@ if endcaps_file and open_space_file:
                 assignments = []
                 summary_data = []
                 used_source_bins = set()  # Tracks bins that have been fully moved
-                partially_moved_bins = {}  # Tracks bins with remaining SUs (for partial moves)
+                partially_moved_bins = {}  # Tracks remaining SUs for each bin (for partial moves)
                 excluded_target_bins = set()  # Tracks bins that can't be used as targets
+                moved_sus = set()  # Tracks which specific SUs have been moved (Storage Bin + Storage Unit)
                 
                 # Create working copy that will track remaining capacity
                 available_bins = open_space_df[
@@ -124,15 +125,19 @@ if endcaps_file and open_space_file:
                     if storage_bin in used_source_bins:
                         continue
                         
-                    bin_group = endcaps_df[endcaps_df["Storage Bin"] == storage_bin]
+                    bin_group = endcaps_df[endcaps_df["Storage Bin"] == storage_bin].copy()
                     total_su_in_bin = bin_group["Total Unique SU Count"].iloc[0]
                     
-                    # For partial moves, check if we've already moved some SUs from this bin
-                    remaining_su = total_su_in_bin
-                    if partial_moves and storage_bin in partially_moved_bins:
-                        remaining_su = partially_moved_bins[storage_bin]
-                        if remaining_su <= 0:
+                    # For partial moves, filter out already moved SUs
+                    if partial_moves:
+                        bin_group = bin_group[~bin_group["Storage Unit"].isin(
+                            [su for (bin, su) in moved_sus if bin == storage_bin]
+                        )]
+                        if len(bin_group) == 0:
+                            used_source_bins.add(storage_bin)
                             continue
+                    
+                    remaining_su = len(bin_group)
                     
                     # Find matching bins with CURRENT availability
                     matching_bins = available_bins[
@@ -147,7 +152,7 @@ if endcaps_file and open_space_file:
                     matching_bins.sort_values("Avail SU", ascending=False, inplace=True)
                     
                     for _, open_space_bin in matching_bins.iterrows():
-                        # Verify batch date compatibility for ALL items
+                        # Verify batch date compatibility for ALL remaining items
                         valid_match = True
                         for _, su_row in bin_group.iterrows():
                             su_batch_date = su_row["Batch Date"]
@@ -179,18 +184,14 @@ if endcaps_file and open_space_file:
                         oldest_target = target_batches.loc[target_batches["Batch Date"].idxmin(), "Batch Number"]
                         newest_target = target_batches.loc[target_batches["Batch Date"].idxmax(), "Batch Number"]
                         
-                        # Create assignments for the SUs being moved
-                        if partial_moves:
-                            # Take the first su_to_move SUs from the bin
-                            su_to_assign = bin_group.head(su_to_move)
-                        else:
-                            # For full moves, we move all or nothing
-                            if open_space_bin["Avail SU"] < remaining_su:
-                                continue
-                            su_to_assign = bin_group
-                            su_to_move = remaining_su
+                        # Select the SUs to move (first su_to_move that haven't been moved yet)
+                        su_to_assign = bin_group.head(su_to_move)
                         
                         for _, su_row in su_to_assign.iterrows():
+                            su_key = (storage_bin, su_row["Storage Unit"])
+                            if su_key in moved_sus:
+                                continue  # Shouldn't happen due to earlier filtering
+                                
                             assignments.append([
                                 open_space_bin["Storage Type"],
                                 open_space_bin["Storage Bin"],
@@ -201,10 +202,11 @@ if endcaps_file and open_space_file:
                                 su_row["Batch"],
                                 open_space_bin["SU Capacity"],
                                 1,  # Each SU counts as 1
-                                open_space_bin["Avail SU"] - su_to_move,  # Remaining capacity
+                                open_space_bin["Avail SU"] - 1,  # Remaining capacity (decremented by 1 per SU)
                                 su_row["Storage Unit"],
                                 su_row["Total Stock"]
                             ])
+                            moved_sus.add(su_key)
                         
                         # Track depletion of source bin
                         if storage_bin not in source_bin_depletion:
@@ -233,17 +235,16 @@ if endcaps_file and open_space_file:
                         # Update tracking
                         remaining_su -= su_to_move
                         
+                        # Update available capacity in the working copy (1 SU at a time)
+                        available_bins.loc[available_bins["Storage Bin"] == open_space_bin["Storage Bin"], "Avail SU"] -= su_to_move
+                        
                         if partial_moves:
-                            partially_moved_bins[storage_bin] = remaining_su
                             if remaining_su <= 0:
                                 used_source_bins.add(storage_bin)
                                 excluded_target_bins.add(storage_bin)
                         else:
                             used_source_bins.add(storage_bin)
                             excluded_target_bins.add(storage_bin)
-                        
-                        # Update available capacity in the working copy
-                        available_bins.loc[available_bins["Storage Bin"] == open_space_bin["Storage Bin"], "Avail SU"] -= su_to_move
                         
                         # Refresh available bins to exclude newly excluded targets
                         available_bins = available_bins[~available_bins["Storage Bin"].isin(excluded_target_bins)]
@@ -270,9 +271,8 @@ if endcaps_file and open_space_file:
                             (updated_open_space_df.loc[updated_open_space_df["Storage Bin"] == storage_bin, "SU Count"].iloc[0] / 
                              updated_open_space_df.loc[updated_open_space_df["Storage Bin"] == storage_bin, "SU Capacity"].iloc[0]) * 100
                         )
-                    else:
-                        # If it's only in endcaps, remove it from the updated endcaps
-                        updated_endcaps_df = updated_endcaps_df[updated_endcaps_df["Storage Bin"] != storage_bin]
+                    # Always remove from endcaps (since we're moving from them)
+                    updated_endcaps_df = updated_endcaps_df[updated_endcaps_df["Storage Bin"] != storage_bin]
                 
                 # --- OUTPUT GENERATION ---
                 if assignments:
