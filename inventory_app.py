@@ -89,7 +89,7 @@ if endcaps_file and open_space_file:
                 # --- DYNAMIC ASSIGNMENT LOGIC ---
                 assignments = []
                 summary_data = []
-                assigned_source_bins = set()
+                used_source_bins = set()  # Track source bins that have been used
                 
                 # Create working copy that will track remaining capacity
                 available_bins = open_space_df[
@@ -98,12 +98,15 @@ if endcaps_file and open_space_file:
                     (open_space_df["Avail SU"] > 0)  # Only consider bins with available capacity
                 ].copy()
                 
-                for storage_bin, bin_group in endcaps_df.groupby("Storage Bin", sort=False):
-                    if storage_bin in assigned_source_bins:
+                # Sort endcaps by smallest bins first to optimize space utilization
+                sorted_endcap_bins = endcaps_df.groupby("Storage Bin").first().sort_values("Total Unique SU Count").index
+                
+                for storage_bin in sorted_endcap_bins:
+                    if storage_bin in used_source_bins:
                         continue
                         
+                    bin_group = endcaps_df[endcaps_df["Storage Bin"] == storage_bin]
                     total_su_in_bin = bin_group["Total Unique SU Count"].iloc[0]
-                    bin_group = bin_group.sort_values("Total Unique SU Count", ascending=True)
                     
                     # Find matching bins with CURRENT availability
                     matching_bins = available_bins[
@@ -179,12 +182,17 @@ if endcaps_file and open_space_file:
                                 total_su_in_bin
                             ])
                             
-                            # CRITICAL: Update BOTH dataframes
-                            open_space_df.loc[open_space_df["Storage Bin"] == open_space_bin["Storage Bin"], "Avail SU"] -= total_su_in_bin
+                            # Update tracking
+                            used_source_bins.add(storage_bin)
+                            
+                            # Update available capacity in the working copy only
                             available_bins.loc[available_bins["Storage Bin"] == open_space_bin["Storage Bin"], "Avail SU"] -= total_su_in_bin
                             
-                            assigned_source_bins.add(storage_bin)
-                            break
+                            break  # Move to next source bin after finding first valid target
+                
+                # Update the main open_space_df with all capacity changes
+                for _, row in available_bins.iterrows():
+                    open_space_df.loc[open_space_df["Storage Bin"] == row["Storage Bin"], "Avail SU"] = row["Avail SU"]
                 
                 # --- OUTPUT GENERATION ---
                 if assignments:
