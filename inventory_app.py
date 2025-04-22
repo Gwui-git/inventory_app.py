@@ -94,7 +94,8 @@ if endcaps_file and open_space_file:
                 # Create working copy that will track remaining capacity
                 available_bins = open_space_df[
                     open_space_df["Storage Type"].isin(move_into_types) & 
-                    (open_space_df["Utilization %"] < 100)
+                    (open_space_df["Utilization %"] < 100) &
+                    (open_space_df["Avail SU"] > 0)  # Only consider bins with available capacity
                 ].copy()
                 
                 for storage_bin, bin_group in endcaps_df.groupby("Storage Bin", sort=False):
@@ -129,6 +130,10 @@ if endcaps_file and open_space_file:
                                 break
                                 
                         if valid_match:
+                            # Additional check to ensure we're not moving into a bin that will have 0 capacity
+                            if open_space_bin["Avail SU"] - total_su_in_bin < 0:
+                                continue
+                                
                             # Get target batch info
                             target_batches = available_bins[
                                 (available_bins["Storage Bin"] == open_space_bin["Storage Bin"]) & 
