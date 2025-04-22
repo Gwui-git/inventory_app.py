@@ -32,6 +32,10 @@ if endcaps_file and open_space_file:
         endcaps_df = pd.read_excel(endcaps_file, sheet_name="Sheet1")
         open_space_df = pd.read_excel(open_space_file, sheet_name="Sheet1")
         
+        # Make copies for the output
+        updated_open_space_df = open_space_df.copy()
+        updated_endcaps_df = endcaps_df.copy()
+        
         # Get storage types from data
         storage_types = sorted(endcaps_df["Storage Type"].dropna().unique())
         move_into_types = sorted(open_space_df["Storage Type"].dropna().unique())
@@ -113,6 +117,9 @@ if endcaps_file and open_space_file:
                 # Sort endcaps by smallest bins first to optimize space utilization
                 sorted_endcap_bins = endcaps_df.groupby("Storage Bin").first().sort_values("Total Unique SU Count").index
                 
+                # Track source bin depletion
+                source_bin_depletion = {}
+                
                 for storage_bin in sorted_endcap_bins:
                     if storage_bin in used_source_bins:
                         continue
@@ -173,7 +180,6 @@ if endcaps_file and open_space_file:
                         newest_target = target_batches.loc[target_batches["Batch Date"].idxmax(), "Batch Number"]
                         
                         # Create assignments for the SUs being moved
-                        # For partial moves, we need to select which SUs to move
                         if partial_moves:
                             # Take the first su_to_move SUs from the bin
                             su_to_assign = bin_group.head(su_to_move)
@@ -199,6 +205,11 @@ if endcaps_file and open_space_file:
                                 su_row["Storage Unit"],
                                 su_row["Total Stock"]
                             ])
+                        
+                        # Track depletion of source bin
+                        if storage_bin not in source_bin_depletion:
+                            source_bin_depletion[storage_bin] = 0
+                        source_bin_depletion[storage_bin] += su_to_move
                         
                         # Add summary entry
                         oldest_source = bin_group.loc[bin_group["Batch Date"].idxmin(), "Batch"]
@@ -240,9 +251,28 @@ if endcaps_file and open_space_file:
                         if not partial_moves or remaining_su <= 0:
                             break  # For full moves or when we've moved all SUs
                 
-                # Update the main open_space_df with all capacity changes
+                # Update the main dataframes with all changes
+                # Update target locations in open space
                 for _, row in available_bins.iterrows():
-                    open_space_df.loc[open_space_df["Storage Bin"] == row["Storage Bin"], "Avail SU"] = row["Avail SU"]
+                    updated_open_space_df.loc[updated_open_space_df["Storage Bin"] == row["Storage Bin"], "Avail SU"] = row["Avail SU"]
+                    updated_open_space_df.loc[updated_open_space_df["Storage Bin"] == row["Storage Bin"], "SU Count"] = row["SU Capacity"] - row["Avail SU"]
+                    updated_open_space_df.loc[updated_open_space_df["Storage Bin"] == row["Storage Bin"], "Utilization %"] = (
+                        (row["SU Capacity"] - row["Avail SU"]) / row["SU Capacity"] * 100
+                    )
+                
+                # Update source locations in endcaps (deplete them)
+                for storage_bin, su_moved in source_bin_depletion.items():
+                    if storage_bin in updated_open_space_df["Storage Bin"].values:
+                        # If the source bin exists in open space, update it
+                        updated_open_space_df.loc[updated_open_space_df["Storage Bin"] == storage_bin, "Avail SU"] += su_moved
+                        updated_open_space_df.loc[updated_open_space_df["Storage Bin"] == storage_bin, "SU Count"] -= su_moved
+                        updated_open_space_df.loc[updated_open_space_df["Storage Bin"] == storage_bin, "Utilization %"] = (
+                            (updated_open_space_df.loc[updated_open_space_df["Storage Bin"] == storage_bin, "SU Count"].iloc[0] / 
+                             updated_open_space_df.loc[updated_open_space_df["Storage Bin"] == storage_bin, "SU Capacity"].iloc[0]) * 100
+                        )
+                    else:
+                        # If it's only in endcaps, remove it from the updated endcaps
+                        updated_endcaps_df = updated_endcaps_df[updated_endcaps_df["Storage Bin"] != storage_bin]
                 
                 # --- OUTPUT GENERATION ---
                 if assignments:
@@ -268,7 +298,8 @@ if endcaps_file and open_space_file:
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         final_output.to_excel(writer, sheet_name='Final Assignments', index=False)
                         summary_output.to_excel(writer, sheet_name='Summary Report', index=False)
-                        open_space_df.to_excel(writer, sheet_name='Updated Open Space', index=False)
+                        updated_open_space_df.to_excel(writer, sheet_name='Updated Open Space', index=False)
+                        updated_endcaps_df.to_excel(writer, sheet_name='Updated Endcaps', index=False)
                     
                     output.seek(0)
                     
@@ -283,7 +314,7 @@ if endcaps_file and open_space_file:
                         data=output,
                         file_name="inventory_assignments.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        help="Contains three sheets: Final Assignments, Summary Report, and Updated Open Space"
+                        help="Contains four sheets: Final Assignments, Summary Report, Updated Open Space, and Updated Endcaps"
                     )
                     
                     # Preview Sections
@@ -295,7 +326,10 @@ if endcaps_file and open_space_file:
                         st.dataframe(summary_output)
                         
                     with st.expander("🔄 View Updated Open Space", expanded=False):
-                        st.dataframe(open_space_df.head(20))
+                        st.dataframe(updated_open_space_df.head(20))
+                        
+                    with st.expander("📦 View Updated Endcaps", expanded=False):
+                        st.dataframe(updated_endcaps_df.head(20))
                 else:
                     st.warning("⚠️ No valid assignments found with current filters and inventory")
                     
