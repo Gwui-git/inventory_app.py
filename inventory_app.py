@@ -110,7 +110,7 @@ if endcaps_file and open_space_file:
                     open_space_df["Storage Type"].isin(move_into_types) & 
                     (open_space_df["Utilization %"] < 100) &
                     (open_space_df["Avail SU"] > 0) &
-                    (~open_space_df["Storage Bin"].isin(excluded_target_bins))
+                    (~open_space_df["Storage Bin"].isin(used_source_bins))  # Critical: Exclude bins that have been used as sources
                 ].copy()
                 
                 # Sort endcaps by smallest bins first to optimize space utilization
@@ -124,12 +124,13 @@ if endcaps_file and open_space_file:
                     total_su_in_bin = len(bin_group)
                     
                     if partial_moves:
-                        # PARTIAL MOVES LOGIC (but must move all SUs)
-                        # First find all matching target bins and calculate total capacity
+                        # PARTIAL MOVES LOGIC (must move all SUs)
+                        # First find all matching target bins (excluding any used sources)
                         matching_bins = available_bins[
                             (available_bins["Material Number"] == bin_group["Material"].iloc[0]) & 
                             (available_bins["Batch Prefix"] == bin_group["Batch Prefix"].iloc[0]) & 
-                            (available_bins["Storage Bin"] != storage_bin)
+                            (available_bins["Storage Bin"] != storage_bin) &
+                            (~available_bins["Storage Bin"].isin(used_source_bins))  # Ensure target hasn't been used as source
                         ].copy()
                         
                         matching_bins = matching_bins.dropna(subset=["Batch Date"])
@@ -151,7 +152,7 @@ if endcaps_file and open_space_file:
                         if not valid_match:
                             continue
                             
-                        # Check if we have enough total capacity
+                        # Check if we have enough total capacity across all matching bins
                         total_available = matching_bins["Avail SU"].sum()
                         if total_available < total_su_in_bin:
                             continue
@@ -200,7 +201,6 @@ if endcaps_file and open_space_file:
                             
                         if remaining_su == 0:
                             used_source_bins.add(storage_bin)
-                            excluded_target_bins.add(storage_bin)
                             summary_data.append([
                                 "Multiple" if len(set(a[1] for a in assignments[-total_su_in_bin:])) > 1 else assignments[-1][0],
                                 bin_group["Storage Type"].iloc[0],
@@ -224,7 +224,8 @@ if endcaps_file and open_space_file:
                             (available_bins["Material Number"] == bin_group["Material"].iloc[0]) & 
                             (available_bins["Batch Prefix"] == bin_group["Batch Prefix"].iloc[0]) & 
                             (available_bins["Storage Bin"] != storage_bin) &
-                            (available_bins["Avail SU"] >= total_su_in_bin)
+                            (available_bins["Avail SU"] >= total_su_in_bin) &
+                            (~available_bins["Storage Bin"].isin(used_source_bins))  # Ensure target hasn't been used as source
                         ].copy()
                         
                         matching_bins = matching_bins.dropna(subset=["Batch Date"])
@@ -292,7 +293,6 @@ if endcaps_file and open_space_file:
                                 
                                 # Update tracking
                                 used_source_bins.add(storage_bin)
-                                excluded_target_bins.add(storage_bin)
                                 available_bins.loc[available_bins["Storage Bin"] == open_space_bin["Storage Bin"], "Avail SU"] -= total_su_in_bin
                                 break
                 
