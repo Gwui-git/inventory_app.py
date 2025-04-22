@@ -113,7 +113,7 @@ if endcaps_file and open_space_file:
                     open_space_df["Storage Type"].isin(move_into_types) & 
                     (open_space_df["Utilization %"] < 100) &
                     (open_space_df["Avail SU"] > 0) &
-                    (~open_space_df["Storage Bin"].isin(used_source_bins))  # Critical: Exclude bins that have been used as sources
+                    (~open_space_df["Storage Bin"].isin(used_source_bins))
                 ].copy()
                 
                 # Sort endcaps by smallest bins first to optimize space utilization
@@ -136,7 +136,7 @@ if endcaps_file and open_space_file:
                             (available_bins["Material Number"] == bin_group["Material"].iloc[0]) & 
                             (available_bins["Batch Prefix"] == bin_group["Batch Prefix"].iloc[0]) & 
                             (available_bins["Storage Bin"] != storage_bin) &
-                            (~available_bins["Storage Bin"].isin(used_source_bins))  # Ensure target hasn't been used as source
+                            (~available_bins["Storage Bin"].isin(used_source_bins))
                         ].copy()
                         
                         matching_bins = matching_bins.dropna(subset=["Batch Date"])
@@ -163,23 +163,31 @@ if endcaps_file and open_space_file:
                         if total_available < total_su_in_bin:
                             continue
                             
-                        # Now assign SUs to targets
+                        # Now assign SUs to targets with real-time capacity tracking
                         remaining_su = total_su_in_bin
                         su_assignments = []
                         assigned_sus = set()
                         
-                        for _, open_space_bin in matching_bins.iterrows():
+                        # Create a temporary copy of matching bins that we'll modify
+                        temp_available_bins = matching_bins.copy()
+                        
+                        for _, open_space_bin in temp_available_bins.iterrows():
                             if remaining_su <= 0:
                                 break
                                 
-                            su_to_move = min(remaining_su, open_space_bin["Avail SU"])
+                            # Get current available capacity (may have been updated by previous assignments)
+                            current_avail = temp_available_bins.loc[
+                                temp_available_bins["Storage Bin"] == open_space_bin["Storage Bin"], 
+                                "Avail SU"].values[0]
+                                
+                            su_to_move = min(remaining_su, current_avail)
                             if su_to_move <= 0:
                                 continue
                                 
-                            target_batches = available_bins[
-                                (available_bins["Storage Bin"] == open_space_bin["Storage Bin"]) & 
-                                (available_bins["Material Number"] == open_space_bin["Material Number"]) & 
-                                (available_bins["Batch Prefix"] == open_space_bin["Batch Prefix"])
+                            target_batches = temp_available_bins[
+                                (temp_available_bins["Storage Bin"] == open_space_bin["Storage Bin"]) & 
+                                (temp_available_bins["Material Number"] == open_space_bin["Material Number"]) & 
+                                (temp_available_bins["Batch Prefix"] == open_space_bin["Batch Prefix"])
                             ]
                             oldest_target = target_batches.loc[target_batches["Batch Date"].idxmin(), "Batch Number"]
                             newest_target = target_batches.loc[target_batches["Batch Date"].idxmax(), "Batch Number"]
@@ -188,6 +196,9 @@ if endcaps_file and open_space_file:
                             for _, su_info in bin_su_batches.iterrows():
                                 if su_info["Storage Unit"] in assigned_sus:
                                     continue
+                                    
+                                if su_to_move <= 0:
+                                    break
                                     
                                 # Get all batches for this SU
                                 su_batch_list = su_info["Batch"]
@@ -202,17 +213,24 @@ if endcaps_file and open_space_file:
                                         batch,
                                         open_space_bin["SU Capacity"],
                                         1,
-                                        open_space_bin["Avail SU"] - 1,
+                                        current_avail - 1,  # Updated remaining capacity
                                         su_info["Storage Unit"],
                                         bin_group["Total Stock"].iloc[0]
                                     ])
                                 
                                 assigned_sus.add(su_info["Storage Unit"])
                                 remaining_su -= 1
-                                available_bins.loc[available_bins["Storage Bin"] == open_space_bin["Storage Bin"], "Avail SU"] -= 1
+                                su_to_move -= 1
                                 
-                                if remaining_su <= 0:
-                                    break
+                                # Update the temporary available bins
+                                temp_available_bins.loc[
+                                    temp_available_bins["Storage Bin"] == open_space_bin["Storage Bin"], 
+                                    "Avail SU"] -= 1
+                                    
+                                # Also update the main available_bins
+                                available_bins.loc[
+                                    available_bins["Storage Bin"] == open_space_bin["Storage Bin"], 
+                                    "Avail SU"] -= 1
                                     
                         if remaining_su == 0:
                             used_source_bins.add(storage_bin)
@@ -228,19 +246,19 @@ if endcaps_file and open_space_file:
                                 bin_group.loc[bin_group["Batch Date"].idxmax(), "Batch"],
                                 open_space_bin["SU Capacity"],
                                 open_space_bin["SU Count"],
-                                open_space_bin["Avail SU"] + 1,  # Original available
+                                current_avail + 1,  # Original available before this assignment
                                 total_su_in_bin
                             ])
                             
                     else:
-                        # FULL MOVES LOGIC (original working version)
+                        # FULL MOVES LOGIC (original working version - UNTOUCHED)
                         # Find matching bins with enough capacity for the entire bin
                         matching_bins = available_bins[
                             (available_bins["Material Number"] == bin_group["Material"].iloc[0]) & 
                             (available_bins["Batch Prefix"] == bin_group["Batch Prefix"].iloc[0]) & 
                             (available_bins["Storage Bin"] != storage_bin) &
                             (available_bins["Avail SU"] >= total_su_in_bin) &
-                            (~available_bins["Storage Bin"].isin(used_source_bins))  # Ensure target hasn't been used as source
+                            (~available_bins["Storage Bin"].isin(used_source_bins))
                         ].copy()
                         
                         matching_bins = matching_bins.dropna(subset=["Batch Date"])
