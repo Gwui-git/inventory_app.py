@@ -89,13 +89,15 @@ if endcaps_file and open_space_file:
                 # --- DYNAMIC ASSIGNMENT LOGIC ---
                 assignments = []
                 summary_data = []
-                used_source_bins = set()  # Track source bins that have been used
+                used_source_bins = set()  # Tracks bins that have been used as sources
+                excluded_target_bins = set()  # Tracks bins that can't be used as targets
                 
                 # Create working copy that will track remaining capacity
                 available_bins = open_space_df[
                     open_space_df["Storage Type"].isin(move_into_types) & 
                     (open_space_df["Utilization %"] < 100) &
-                    (open_space_df["Avail SU"] > 0)  # Only consider bins with available capacity
+                    (open_space_df["Avail SU"] > 0) &
+                    (~open_space_df["Storage Bin"].isin(excluded_target_bins))  # Exclude bins that can't be targets
                 ].copy()
                 
                 # Sort endcaps by smallest bins first to optimize space utilization
@@ -183,10 +185,14 @@ if endcaps_file and open_space_file:
                             ])
                             
                             # Update tracking
-                            used_source_bins.add(storage_bin)
+                            used_source_bins.add(storage_bin)  # Mark this bin as used as source
+                            excluded_target_bins.add(storage_bin)  # Now exclude it from being a target
                             
-                            # Update available capacity in the working copy only
+                            # Update available capacity in the working copy
                             available_bins.loc[available_bins["Storage Bin"] == open_space_bin["Storage Bin"], "Avail SU"] -= total_su_in_bin
+                            
+                            # Refresh available bins to exclude newly excluded targets
+                            available_bins = available_bins[~available_bins["Storage Bin"].isin(excluded_target_bins)]
                             
                             break  # Move to next source bin after finding first valid target
                 
