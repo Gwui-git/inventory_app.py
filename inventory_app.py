@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import io
+from io import BytesIO
 
 # --- Function Definitions ---
 def parse_batch(batch):
@@ -15,16 +15,6 @@ def parse_batch(batch):
         except ValueError:
             return batch_prefix, pd.NaT
     return None, pd.NaT
-
-def create_download_links(final_output, summary_output, updated_open_space):
-    """Create download links for all output files"""
-    towrite = io.BytesIO()
-    with pd.ExcelWriter(towrite, engine='openpyxl') as writer:
-        final_output.to_excel(writer, sheet_name='Assignments', index=False)
-        summary_output.to_excel(writer, sheet_name='Summary', index=False)
-        updated_open_space.to_excel(writer, sheet_name='Updated_Open_Space', index=False)
-    towrite.seek(0)
-    return towrite
 
 # --- Streamlit UI ---
 st.set_page_config(layout="wide", page_title="Inventory Consolidation Tool")
@@ -184,26 +174,32 @@ if endcaps_file and open_space_file:
                         "SUs Being Moved"
                     ])
                     
-                    # Create download bundle
-                    excel_data = create_download_links(final_output, summary_output, open_space_df)
+                    # Create Excel file with multiple sheets
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        final_output.to_excel(writer, sheet_name='Final Assignments', index=False)
+                        summary_output.to_excel(writer, sheet_name='Summary Report', index=False)
+                        open_space_df.to_excel(writer, sheet_name='Updated Open Space', index=False)
                     
-                    # UI Output
+                    output.seek(0)  # Important! Reset the pointer
+                    
+                    # Download button with all sheets
                     st.success(f"✅ Successfully created {len(assignments)} assignments!")
-                    
                     st.download_button(
-                        label="📥 Download All Reports",
-                        data=excel_data,
-                        file_name="inventory_assignments.xlsx",
+                        label="📥 Download ALL Reports (Excel)",
+                        data=output,
+                        file_name="inventory_reports.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                     
-                    with st.expander("Preview Assignments"):
+                    # Preview sections
+                    with st.expander("🔍 Preview Final Assignments"):
                         st.dataframe(final_output.head(10))
                     
-                    with st.expander("Preview Summary"):
+                    with st.expander("📊 Preview Summary Report"):
                         st.dataframe(summary_output.head(10))
                     
-                    with st.expander("Preview Updated Open Space"):
+                    with st.expander("🔄 Preview Updated Open Space"):
                         st.dataframe(open_space_df.head(10))
                 else:
                     st.warning("⚠️ No matching assignments found with current filters")
