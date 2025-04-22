@@ -1,4 +1,4 @@
 streamlit==1.27.0
 pandas==2.2.3
 openpyxl==3.1.2
-pillow==9.5.0 --only-binary=:all:  # Force pre-built wheel
+pillow==11.2.1
