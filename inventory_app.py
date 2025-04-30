@@ -23,9 +23,17 @@ st.title("📦 Advanced Inventory Processor")
 with st.expander("📂 STEP 1: Upload Files", expanded=True):
     col1, col2 = st.columns(2)
     with col1:
-        endcaps_file = st.file_uploader("Endcaps File", type=["xlsx"], help="Upload the Endcaps inventory Excel file")
+        endcaps_file = st.file_uploader(
+            "Endcaps File", 
+            type=["xlsx"],  # Streamlit will automatically handle case insensitivity in newer versions
+            help="Upload the Endcaps inventory Excel file (.xlsx, .XLSX, etc.)"
+        )
     with col2:
-        open_space_file = st.file_uploader("Open Space File", type=["xlsx"], help="Upload the Open Space inventory Excel file")
+        open_space_file = st.file_uploader(
+            "Open Space File", 
+            type=["xlsx"],  # Streamlit will automatically handle case insensitivity in newer versions
+            help="Upload the Open Space inventory Excel file (.xlsx, .XLSX, etc.)"
+        )
 
 if endcaps_file and open_space_file:
     try:
