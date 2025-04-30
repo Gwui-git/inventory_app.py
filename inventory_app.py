@@ -19,20 +19,20 @@ def parse_batch(batch):
 st.set_page_config(layout="wide", page_title="Inventory Consolidation Tool")
 st.title("📦 Advanced Inventory Processor")
 
-# File Upload
+# File Upload - this should work in modern Streamlit versions
 with st.expander("📂 STEP 1: Upload Files", expanded=True):
     col1, col2 = st.columns(2)
     with col1:
         endcaps_file = st.file_uploader(
             "Endcaps File", 
-            type=["xlsx"],  # Streamlit will automatically handle case insensitivity in newer versions
-            help="Upload the Endcaps inventory Excel file (.xlsx, .XLSX, etc.)"
+            type="xlsx",  # Lowercase - Streamlit handles case insensitivity
+            help="Upload the Endcaps inventory Excel file"
         )
     with col2:
         open_space_file = st.file_uploader(
             "Open Space File", 
-            type=["xlsx"],  # Streamlit will automatically handle case insensitivity in newer versions
-            help="Upload the Open Space inventory Excel file (.xlsx, .XLSX, etc.)"
+            type="xlsx",  # Lowercase - Streamlit handles case insensitivity
+            help="Upload the Open Space inventory Excel file"
         )
 
 if endcaps_file and open_space_file:
