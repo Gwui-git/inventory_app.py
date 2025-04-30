@@ -19,24 +19,38 @@ def parse_batch(batch):
 st.set_page_config(layout="wide", page_title="Inventory Consolidation Tool")
 st.title("📦 Advanced Inventory Processor")
 
-# File Upload - this should work in modern Streamlit versions
+def validate_excel_file(uploaded_file):
+    """Helper function to validate Excel files with case-insensitive extension check"""
+    if uploaded_file is None:
+        return None
+    if not uploaded_file.name.lower().endswith('.xlsx'):
+        st.error(f"Invalid file type: {uploaded_file.name}. Please upload an .xlsx file")
+        return None
+    return uploaded_file
+
+# File Upload with custom validation
 with st.expander("📂 STEP 1: Upload Files", expanded=True):
     col1, col2 = st.columns(2)
     with col1:
         endcaps_file = st.file_uploader(
             "Endcaps File", 
-            type="xlsx",  # Lowercase - Streamlit handles case insensitivity
-            help="Upload the Endcaps inventory Excel file"
+            type=None,  # Accept any file but we'll validate manually
+            help="Upload the Endcaps inventory Excel file (.xlsx)"
         )
+        endcaps_file = validate_excel_file(endcaps_file)  # Apply validation
+        
     with col2:
         open_space_file = st.file_uploader(
             "Open Space File", 
-            type="xlsx",  # Lowercase - Streamlit handles case insensitivity
-            help="Upload the Open Space inventory Excel file"
+            type=None,  # Accept any file but we'll validate manually
+            help="Upload the Open Space inventory Excel file (.xlsx)"
         )
+        open_space_file = validate_excel_file(open_space_file)  # Apply validation
 
+# Only proceed if both files are valid
 if endcaps_file and open_space_file:
     try:
+        # Rest of your processing code remains exactly the same...
         endcaps_df = pd.read_excel(endcaps_file, sheet_name="Sheet1")
         open_space_df = pd.read_excel(open_space_file, sheet_name="Sheet1")
         
