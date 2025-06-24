@@ -223,38 +223,38 @@ if endcaps_file and open_space_file:
                     open_space_df.loc[open_space_df["Storage Bin"] == row["Storage Bin"], "Avail SU"] = row["Avail SU"]
                 
                 # --- OUTPUT GENERATION ---
-if assignments:
-    # Create DataFrames with new column names and order
-    final_output = pd.DataFrame(assignments, columns=[
-        "FROM STORAGE TYPE",        # Was: "Endcap Storage Type"
-        "TO STORAGE TYPE",          # Was: "Open Space Storage Type"
-        "Material",                 # (No change)
-        "TO BATCH",                 # Was: "Open Space Batch"
-        "FROM BATCH",               # Was: "Original Batch"
-        "SU CAPACITY",              # Was: "SU Capacity"
-        "SU COUNT",                 # Was: "SU Count"
-        "AVAILABLE SU",             # Was: "Remaining Avail SU"
-        "LP#",                      # Was: "Storage Unit"
-        "RACK QTY",                 # Was: "Total Stock"
-        "FROM LOC",                 # Was: "Bin Moving From"
-        "TO LOC"                    # Was: "Storage Bin"
-    ])
+                if assignments:
+                    # Create DataFrames with new column names and order
+                    final_output = pd.DataFrame(assignments, columns=[
+                        "FROM STORAGE TYPE",        # Was: "Endcap Storage Type"
+                        "TO STORAGE TYPE",          # Was: "Open Space Storage Type"
+                        "Material",                 # (No change)
+                        "TO BATCH",                 # Was: "Open Space Batch"
+                        "FROM BATCH",               # Was: "Original Batch"
+                        "SU CAPACITY",              # Was: "SU Capacity"
+                        "SU COUNT",                 # Was: "SU Count"
+                        "AVAILABLE SU",             # Was: "Remaining Avail SU"
+                        "LP#",                      # Was: "Storage Unit"
+                        "RACK QTY",                 # Was: "Total Stock"
+                        "FROM LOC",                 # Was: "Bin Moving From"
+                        "TO LOC"                    # Was: "Storage Bin"
+                    ])
     
-    summary_output = pd.DataFrame(summary_data, columns=[
-        "FROM STORAGE TYPE",        # Was: "Endcap Storage Type"
-        "TO STORAGE TYPE",          # Was: "Open Space Storage Type"
-        "Material",                 # (No change)
-        "FROM OLDEST BATCH",        # Was: "Endcap Oldest Batch"
-        "FROM NEWEST BATCH",        # Was: "Endcap Newest Batch"
-        "TO OLDEST BATCH",          # Was: "Open Space Oldest Batch"
-        "TO NEWEST BATCH",          # Was: "Open Space Newest Batch"
-        "SU CAPACITY",              # Was: "SU Capacity"
-        "CURRENT SU COUNT",         # Was: "Starting SU Count"
-        "AVAILABLE SU",             # Was: "Starting Avail SU"
-        "SUs TO MOVE",              # Was: "SUs Being Moved"
-        "FROM LOC",                 # Was: "Endcap Storage Bin"
-        "TO LOC"                    # Was: "Open Space Storage Bin"
-    ])
+                    summary_output = pd.DataFrame(summary_data, columns=[
+                        "FROM STORAGE TYPE",        # Was: "Endcap Storage Type"
+                        "TO STORAGE TYPE",          # Was: "Open Space Storage Type"
+                        "Material",                 # (No change)
+                        "FROM OLDEST BATCH",        # Was: "Endcap Oldest Batch"
+                        "FROM NEWEST BATCH",        # Was: "Endcap Newest Batch"
+                        "TO OLDEST BATCH",          # Was: "Open Space Oldest Batch"
+                        "TO NEWEST BATCH",          # Was: "Open Space Newest Batch"
+                        "SU CAPACITY",              # Was: "SU Capacity"
+                        "CURRENT SU COUNT",         # Was: "Starting SU Count"
+                        "AVAILABLE SU",             # Was: "Starting Avail SU"
+                        "SUs TO MOVE",              # Was: "SUs Being Moved"
+                        "FROM LOC",                 # Was: "Endcap Storage Bin"
+                        "TO LOC"                    # Was: "Open Space Storage Bin"
+                    ])
                     
                     # Create Excel with all sheets
                     output = BytesIO()
