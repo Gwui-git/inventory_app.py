@@ -201,19 +201,42 @@ if endcaps_file and open_space_file:
                     open_space_df.loc[open_space_df["Storage Bin"] == row["Storage Bin"], "Avail SU"] = row["Avail SU"]
                 
                 # --- Output Generation ---
-                if assignments:
-                    final_output = pd.DataFrame(assignments, columns=[
-                        "FROM STORAGE TYPE", "TO STORAGE TYPE", "Material",
-                        "TO BATCH", "FROM BATCH", "SU CAPACITY", "SU COUNT",
-                        "AVAILABLE SU", "LP#", "RACK QTY", "FROM LOC", "TO LOC"
-                    ])
-                    
-                    summary_output = pd.DataFrame(summary_data, columns=[
-                        "FROM STORAGE TYPE", "TO STORAGE TYPE", "Material",
-                        "FROM OLDEST BATCH", "FROM NEWEST BATCH", "TO OLDEST BATCH",
-                        "TO NEWEST BATCH", "SU CAPACITY", "CURRENT SU COUNT",
-                        "AVAILABLE SU", "SUs TO MOVE", "FROM LOC", "TO LOC"
-                    ])
+               if assignments:
+                    # Create DataFrames with new column names and order
+                    final_output = pd.DataFrame(
+                        data={
+                            "FROM STORAGE TYPE": [x[3] for x in assignments],  # Endcap Storage Type
+                            "TO STORAGE TYPE": [x[0] for x in assignments],    # Open Space Storage Type
+                            "Material": [x[4] for x in assignments],           # Material
+                            "TO BATCH": [x[5] for x in assignments],           # Open Space Batch
+                            "FROM BATCH": [x[6] for x in assignments],         # Original Batch
+                            "SU CAPACITY": [x[7] for x in assignments],        # SU Capacity
+                            "SU COUNT": [x[8] for x in assignments],           # SU Count
+                            "AVAILABLE SU": [x[9] for x in assignments],       # Remaining Avail SU
+                            "LP#": [x[10] for x in assignments],               # Storage Unit
+                            "RACK QTY": [x[11] for x in assignments],          # Total Stock
+                            "FROM LOC": [x[2] for x in assignments],           # Bin Moving From
+                            "TO LOC": [x[1] for x in assignments]              # Storage Bin
+                        }
+                    )
+    
+                    summary_output = pd.DataFrame(
+                        data={
+                            "FROM STORAGE TYPE": [x[1] for x in summary_data],  # Endcap Storage Type
+                            "TO STORAGE TYPE": [x[0] for x in summary_data],    # Open Space Storage Type
+                            "Material": [x[4] for x in summary_data],           # Material
+                            "FROM OLDEST BATCH": [x[7] for x in summary_data],  # Endcap Oldest Batch
+                            "FROM NEWEST BATCH": [x[8] for x in summary_data],  # Endcap Newest Batch
+                            "TO OLDEST BATCH": [x[5] for x in summary_data],   # Open Space Oldest Batch
+                            "TO NEWEST BATCH": [x[6] for x in summary_data],    # Open Space Newest Batch
+                            "SU CAPACITY": [x[9] for x in summary_data],        # SU Capacity
+                            "CURRENT SU COUNT": [x[10] for x in summary_data],  # Starting SU Count
+                            "AVAILABLE SU": [x[11] for x in summary_data],      # Starting Avail SU
+                            "SUs TO MOVE": [x[12] for x in summary_data],       # SUs Being Moved
+                            "FROM LOC": [x[3] for x in summary_data],           # Endcap Storage Bin
+                            "TO LOC": [x[2] for x in summary_data]              # Open Space Storage Bin
+                        }
+                    )
                     
                     output = BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
