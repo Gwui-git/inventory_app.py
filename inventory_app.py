@@ -225,36 +225,40 @@ if endcaps_file and open_space_file:
                 # --- OUTPUT GENERATION ---
                 if assignments:
                     # Create DataFrames with new column names and order
-                    final_output = pd.DataFrame(assignments, columns=[
-                        "FROM STORAGE TYPE",        # Was: "Endcap Storage Type"
-                        "TO STORAGE TYPE",          # Was: "Open Space Storage Type"
-                        "Material",                 # (No change)
-                        "TO BATCH",                 # Was: "Open Space Batch"
-                        "FROM BATCH",               # Was: "Original Batch"
-                        "SU CAPACITY",              # Was: "SU Capacity"
-                        "SU COUNT",                 # Was: "SU Count"
-                        "AVAILABLE SU",             # Was: "Remaining Avail SU"
-                        "LP#",                      # Was: "Storage Unit"
-                        "RACK QTY",                 # Was: "Total Stock"
-                        "FROM LOC",                 # Was: "Bin Moving From"
-                        "TO LOC"                    # Was: "Storage Bin"
-                    ])
+                    final_output = pd.DataFrame(
+                        data={
+                             "FROM STORAGE TYPE": [x[3] for x in assignments],  # Endcap Storage Type
+                            "TO STORAGE TYPE": [x[0] for x in assignments],    # Open Space Storage Type
+                            "Material": [x[4] for x in assignments],           # Material
+                            "TO BATCH": [x[5] for x in assignments],           # Open Space Batch
+                            "FROM BATCH": [x[6] for x in assignments],         # Original Batch
+                            "SU CAPACITY": [x[7] for x in assignments],        # SU Capacity
+                            "SU COUNT": [x[8] for x in assignments],           # SU Count
+                            "AVAILABLE SU": [x[9] for x in assignments],       # Remaining Avail SU
+                            "LP#": [x[10] for x in assignments],               # Storage Unit
+                            "RACK QTY": [x[11] for x in assignments],          # Total Stock
+                            "FROM LOC": [x[2] for x in assignments],           # Bin Moving From
+                            "TO LOC": [x[1] for x in assignments]              # Storage Bin
+                        }
+                    )
     
-                    summary_output = pd.DataFrame(summary_data, columns=[
-                        "FROM STORAGE TYPE",        # Was: "Endcap Storage Type"
-                        "TO STORAGE TYPE",          # Was: "Open Space Storage Type"
-                        "Material",                 # (No change)
-                        "FROM OLDEST BATCH",        # Was: "Endcap Oldest Batch"
-                        "FROM NEWEST BATCH",        # Was: "Endcap Newest Batch"
-                        "TO OLDEST BATCH",          # Was: "Open Space Oldest Batch"
-                        "TO NEWEST BATCH",          # Was: "Open Space Newest Batch"
-                        "SU CAPACITY",              # Was: "SU Capacity"
-                        "CURRENT SU COUNT",         # Was: "Starting SU Count"
-                        "AVAILABLE SU",             # Was: "Starting Avail SU"
-                        "SUs TO MOVE",              # Was: "SUs Being Moved"
-                        "FROM LOC",                 # Was: "Endcap Storage Bin"
-                        "TO LOC"                    # Was: "Open Space Storage Bin"
-                    ])
+                    summary_output = pd.DataFrame(
+                        data={
+                            "FROM STORAGE TYPE": [x[1] for x in summary_data],  # Endcap Storage Type
+                            "TO STORAGE TYPE": [x[0] for x in summary_data],    # Open Space Storage Type
+                            "Material": [x[4] for x in summary_data],           # Material
+                            "FROM OLDEST BATCH": [x[7] for x in summary_data],  # Endcap Oldest Batch
+                            "FROM NEWEST BATCH": [x[8] for x in summary_data],  # Endcap Newest Batch
+                            "TO OLDEST BATCH": [x[5] for x in summary_data],   # Open Space Oldest Batch
+                            "TO NEWEST BATCH": [x[6] for x in summary_data],    # Open Space Newest Batch
+                            "SU CAPACITY": [x[9] for x in summary_data],        # SU Capacity
+                            "CURRENT SU COUNT": [x[10] for x in summary_data],  # Starting SU Count
+                            "AVAILABLE SU": [x[11] for x in summary_data],      # Starting Avail SU
+                            "SUs TO MOVE": [x[12] for x in summary_data],       # SUs Being Moved
+                            "FROM LOC": [x[3] for x in summary_data],           # Endcap Storage Bin
+                            "TO LOC": [x[2] for x in summary_data]              # Open Space Storage Bin
+                        }
+                    )
                     
                     # Create Excel with all sheets
                     output = BytesIO()
