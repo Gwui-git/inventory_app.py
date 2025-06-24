@@ -3,12 +3,6 @@ import pandas as pd
 from datetime import datetime
 from io import BytesIO
 
-# --- Optimized Data Loading ---
-@st.cache_data(ttl=3600)
-def load_data(uploaded_file):
-    """Cached data loading that preserves original structure"""
-    return pd.read_excel(uploaded_file, sheet_name="Sheet1")
-
 def parse_batch(batch):
     if isinstance(batch, str) and len(batch) >= 10:
         batch_prefix = batch[:2]
@@ -26,6 +20,7 @@ st.set_page_config(layout="wide", page_title="Inventory Consolidation Tool")
 st.title("📦 Advanced Inventory Processor")
 
 def validate_excel_file(uploaded_file):
+    """Helper function to validate Excel files with case-insensitive extension check"""
     if uploaded_file is None:
         return None
     if not uploaded_file.name.lower().endswith('.xlsx'):
@@ -33,25 +28,33 @@ def validate_excel_file(uploaded_file):
         return None
     return uploaded_file
 
-# File Upload
+# File Upload with custom validation
 with st.expander("📂 STEP 1: Upload Files", expanded=True):
     col1, col2 = st.columns(2)
     with col1:
-        endcaps_file = st.file_uploader("Endcaps File", type=None)
-        endcaps_file = validate_excel_file(endcaps_file)
+        endcaps_file = st.file_uploader(
+            "Endcaps File", 
+            type=None,  # Accept any file but we'll validate manually
+            help="Upload the Endcaps inventory Excel file (.xlsx)"
+        )
+        endcaps_file = validate_excel_file(endcaps_file)  # Apply validation
+        
     with col2:
-        open_space_file = st.file_uploader("Open Space File", type=None)
-        open_space_file = validate_excel_file(open_space_file)
+        open_space_file = st.file_uploader(
+            "Open Space File", 
+            type=None,  # Accept any file but we'll validate manually
+            help="Upload the Open Space inventory Excel file (.xlsx)"
+        )
+        open_space_file = validate_excel_file(open_space_file)  # Apply validation
 
-# Main Processing
+# Only proceed if both files are valid
 if endcaps_file and open_space_file:
     try:
-        # Load data with caching but ensure fresh processing
-        with st.spinner("Loading data..."):
-            endcaps_df = load_data(endcaps_file).copy()  # Explicit copy to avoid cache issues
-            open_space_df = load_data(open_space_file).copy()
+        # Rest of your processing code remains exactly the same...
+        endcaps_df = pd.read_excel(endcaps_file, sheet_name="Sheet1")
+        open_space_df = pd.read_excel(open_space_file, sheet_name="Sheet1")
         
-        # Get storage types (uncached to reflect filters)
+        # Get storage types from data
         storage_types = sorted(endcaps_df["Storage Type"].dropna().unique())
         move_into_types = sorted(open_space_df["Storage Type"].dropna().unique())
         
@@ -63,23 +66,26 @@ if endcaps_file and open_space_file:
                     "Filter these storage types (Endcaps):",
                     options=storage_types,
                     default=storage_types,
-                    key="endcap_types"
+                    help="Only process these storage types from Endcaps"
                 )
             with cols[1]:
                 move_into_types = st.multiselect(
                     "Move into these storage types (Open Space):",
                     options=move_into_types,
                     default=move_into_types,
-                    key="openspace_types"
+                    help="Only consider these storage types in Open Space"
                 )
         
-        if st.button("🚀 Process Files", type="primary"):
-            with st.spinner("Processing..."):
-                # --- Original Algorithm Starts Here ---
+        if st.button("🚀 Process Files", type="primary", help="Run the consolidation algorithm"):
+            with st.spinner("Crunching numbers..."):
+                # --- CORE PROCESSING ---
+                # 1. Filter VIR locations
                 open_space_df = open_space_df[open_space_df["Storage Type"] != "VIR"].copy()
+                
+                # 2. Filter Endcaps by selected types
                 endcaps_df = endcaps_df[endcaps_df["Storage Type"].isin(selected_types)].copy()
                 
-                # Calculate SU count per storage bin
+                # 3. Calculate SU count per storage bin
                 endcaps_df["Storage Unit"] = endcaps_df["Storage Unit"].astype(str).str.strip()
                 endcaps_df["Storage Bin"] = endcaps_df["Storage Bin"].astype(str).str.strip()
                 su_count_per_bin = endcaps_df.groupby("Storage Bin")["Storage Unit"].nunique().reset_index()
@@ -87,9 +93,10 @@ if endcaps_file and open_space_file:
                 endcaps_df = endcaps_df.merge(su_count_per_bin, on="Storage Bin", how="left")
                 endcaps_df.sort_values("Total Unique SU Count", ascending=True, inplace=True)
                 
+                # 4. Sort Open Space by SU Count (descending)
                 open_space_df.sort_values("SU Count", ascending=False, inplace=True)
                 
-                # Batch processing
+                # 5. Standardize and parse batches
                 endcaps_df["Material"] = endcaps_df["Material"].astype(str).str.strip()
                 open_space_df["Material Number"] = open_space_df["Material Number"].astype(str).str.strip()
                 endcaps_df["Batch"] = endcaps_df["Batch"].astype(str).str.strip()
@@ -101,19 +108,21 @@ if endcaps_file and open_space_file:
                 endcaps_df["Batch Date"] = pd.to_datetime(endcaps_df["Batch Date"], errors='coerce')
                 open_space_df["Batch Date"] = pd.to_datetime(open_space_df["Batch Date"], errors='coerce')
                 
-                # --- Dynamic Assignment Logic ---
+                # --- DYNAMIC ASSIGNMENT LOGIC ---
                 assignments = []
                 summary_data = []
-                used_source_bins = set()
-                excluded_target_bins = set()
+                used_source_bins = set()  # Tracks bins that have been used as sources
+                excluded_target_bins = set()  # Tracks bins that can't be used as targets
                 
+                # Create working copy that will track remaining capacity
                 available_bins = open_space_df[
                     open_space_df["Storage Type"].isin(move_into_types) & 
                     (open_space_df["Utilization %"] < 100) &
                     (open_space_df["Avail SU"] > 0) &
-                    (~open_space_df["Storage Bin"].isin(excluded_target_bins))
+                    (~open_space_df["Storage Bin"].isin(excluded_target_bins))  # Exclude bins that can't be targets
                 ].copy()
                 
+                # Sort endcaps by smallest bins first to optimize space utilization
                 sorted_endcap_bins = endcaps_df.groupby("Storage Bin").first().sort_values("Total Unique SU Count").index
                 
                 for storage_bin in sorted_endcap_bins:
@@ -123,16 +132,18 @@ if endcaps_file and open_space_file:
                     bin_group = endcaps_df[endcaps_df["Storage Bin"] == storage_bin]
                     total_su_in_bin = bin_group["Total Unique SU Count"].iloc[0]
                     
+                    # Find matching bins with CURRENT availability
                     matching_bins = available_bins[
                         (available_bins["Material Number"] == bin_group["Material"].iloc[0]) & 
                         (available_bins["Batch Prefix"] == bin_group["Batch Prefix"].iloc[0]) & 
                         (available_bins["Storage Bin"] != storage_bin) &
-                        (available_bins["Avail SU"] >= total_su_in_bin)
+                        (available_bins["Avail SU"] >= total_su_in_bin)  # Current capacity check
                     ].copy()
                     
                     matching_bins = matching_bins.dropna(subset=["Batch Date"])
                     
                     for _, open_space_bin in matching_bins.iterrows():
+                        # Verify batch date compatibility for ALL items
                         valid_match = True
                         for _, su_row in bin_group.iterrows():
                             su_batch_date = su_row["Batch Date"]
@@ -146,9 +157,11 @@ if endcaps_file and open_space_file:
                                 break
                                 
                         if valid_match:
+                            # Additional check to ensure we're not moving into a bin that will have 0 capacity
                             if open_space_bin["Avail SU"] - total_su_in_bin < 0:
                                 continue
                                 
+                            # Get target batch info
                             target_batches = available_bins[
                                 (available_bins["Storage Bin"] == open_space_bin["Storage Bin"]) & 
                                 (available_bins["Material Number"] == open_space_bin["Material Number"]) & 
@@ -157,6 +170,7 @@ if endcaps_file and open_space_file:
                             oldest_target = target_batches.loc[target_batches["Batch Date"].idxmin(), "Batch Number"]
                             newest_target = target_batches.loc[target_batches["Batch Date"].idxmax(), "Batch Number"]
                             
+                            # Create assignments for each SU
                             for _, su_row in bin_group.iterrows():
                                 assignments.append([
                                     open_space_bin["Storage Type"],
@@ -167,12 +181,13 @@ if endcaps_file and open_space_file:
                                     oldest_target,
                                     su_row["Batch"],
                                     open_space_bin["SU Capacity"],
-                                    1,
-                                    open_space_bin["Avail SU"] - total_su_in_bin,
+                                    1,  # Each SU counts as 1
+                                    open_space_bin["Avail SU"] - total_su_in_bin,  # Remaining capacity
                                     su_row["Storage Unit"],
                                     su_row["Total Stock"]
                                 ])
                             
+                            # Add summary entry
                             oldest_source = bin_group.loc[bin_group["Batch Date"].idxmin(), "Batch"]
                             newest_source = bin_group.loc[bin_group["Batch Date"].idxmax(), "Batch"]
                             summary_data.append([
@@ -187,25 +202,32 @@ if endcaps_file and open_space_file:
                                 newest_source,
                                 open_space_bin["SU Capacity"],
                                 open_space_bin["SU Count"],
-                                open_space_bin["Avail SU"],
+                                open_space_bin["Avail SU"],  # Pre-assignment availability
                                 total_su_in_bin
                             ])
                             
-                            used_source_bins.add(storage_bin)
-                            excluded_target_bins.add(storage_bin)
+                            # Update tracking
+                            used_source_bins.add(storage_bin)  # Mark this bin as used as source
+                            excluded_target_bins.add(storage_bin)  # Now exclude it from being a target
+                            
+                            # Update available capacity in the working copy
                             available_bins.loc[available_bins["Storage Bin"] == open_space_bin["Storage Bin"], "Avail SU"] -= total_su_in_bin
+                            
+                            # Refresh available bins to exclude newly excluded targets
                             available_bins = available_bins[~available_bins["Storage Bin"].isin(excluded_target_bins)]
-                            break
+                            
+                            break  # Move to next source bin after finding first valid target
                 
+                # Update the main open_space_df with all capacity changes
                 for _, row in available_bins.iterrows():
                     open_space_df.loc[open_space_df["Storage Bin"] == row["Storage Bin"], "Avail SU"] = row["Avail SU"]
                 
-                # --- Output Generation ---
-               if assignments:
+                # --- OUTPUT GENERATION ---
+                if assignments:
                     # Create DataFrames with new column names and order
                     final_output = pd.DataFrame(
                         data={
-                            "FROM STORAGE TYPE": [x[3] for x in assignments],  # Endcap Storage Type
+                             "FROM STORAGE TYPE": [x[3] for x in assignments],  # Endcap Storage Type
                             "TO STORAGE TYPE": [x[0] for x in assignments],    # Open Space Storage Type
                             "Material": [x[4] for x in assignments],           # Material
                             "TO BATCH": [x[5] for x in assignments],           # Open Space Batch
@@ -238,6 +260,7 @@ if endcaps_file and open_space_file:
                         }
                     )
                     
+                    # Create Excel with all sheets
                     output = BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         final_output.to_excel(writer, sheet_name='Final Assignments', index=False)
@@ -245,17 +268,31 @@ if endcaps_file and open_space_file:
                         open_space_df.to_excel(writer, sheet_name='Updated Open Space', index=False)
                     output.seek(0)
                     
-                    st.success(f"✅ Created {len(assignments)} assignments!")
+                    # Display Results
+                    st.success(f"✅ Successfully created {len(assignments)} assignments across {len(summary_data)} target locations!")
+                    
+                    # Download Button
                     st.download_button(
-                        label="📥 Download Report",
+                        label="📥 Download Complete Report Package",
                         data=output,
                         file_name="inventory_assignments.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        help="Contains three sheets: Final Assignments, Summary Report, and Updated Open Space"
                     )
                     
-                    # Preview sections remain unchanged
+                    # Preview Sections
+                    with st.expander("🔍 View Assignment Details", expanded=False):
+                        st.dataframe(final_output.head(20))
+                        st.info(f"Showing first 20 of {len(final_output)} assignments")
+                        
+                    with st.expander("📊 View Summary Report", expanded=False):
+                        st.dataframe(summary_output)
+                        
+                    with st.expander("🔄 View Updated Open Space", expanded=False):
+                        st.dataframe(open_space_df.head(20))
                 else:
-                    st.warning("⚠️ No valid assignments found")
+                    st.warning("⚠️ No valid assignments found with current filters and inventory")
                     
     except Exception as e:
         st.error(f"❌ Processing failed: {str(e)}")
+        st.exception(e)
